@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>WebGPU GPU Benchmark</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:Arial}
+canvas{width:100%;height:100%;display:block}
+#info{display:none}
+</style>
+</head>
+<body>
+<canvas id="gpu"></canvas>
+
+<script>
+// ==================== SETTINGS ====================
+// Increase WORK to make the GPU workload heavier.
+// Try: 20 (light), 50 (medium), 100 (heavy), 200 (very heavy)
+const WORK = 79999;
+
+// Benchmark length in seconds
+const BENCHMARK_SECONDS = 30;
+// ==================================================
+
+const canvas = document.getElementById("gpu");
+const info = document.getElementById("info");
+
+async function main(){
+  if(!navigator.gpu) return;
+
+  const adapter = await navigator.gpu.requestAdapter();
+  if(!adapter) return;
+
+  const device = await adapter.requestDevice();
+  const ctx = canvas.getContext("webgpu");
+  const format = navigator.gpu.getPreferredCanvasFormat();
+
+  ctx.configure({device, format, alphaMode:"opaque"});
+
+  const shader = `
+struct VSOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uv: vec2f
+};
+
+@vertex
+fn vs(@builtin(vertex_index) i:u32) -> VSOut {
+  var p = array<vec2f,3>(
+    vec2f(-1.0,-3.0),
+    vec2f(3.0,1.0),
+    vec2f(-1.0,1.0)
+  );
+  var o:VSOut;
+  o.pos=vec4f(p[i],0.0,1.0);
+  o.uv=p[i]*0.5+0.5;
+  return o;
+}
+
+@fragment
+fn fs(v:VSOut) -> @location(0) vec4f {
+  var p = v.uv*2.0-1.0;
+  var z = 0.0;
+  var a = 0.0;
+  var b = 0.0;
+
+  for(var i:i32=0; i<${WORK}; i++){
+    let t=f32(i)*0.037;
+    let x=p.x+sin(z+t)*0.45;
+    let y=p.y+cos(z-t)*0.45;
+    a+=sin(x*x*3.1+y*y*4.7+t);
+    b+=cos(x*y*6.3+a);
+    z+=0.015+abs(sin(a+b))*0.012;
+  }
+
+  let c=0.5+0.5*sin(vec3f(a,b,z)*1.7);
+  return vec4f(c,1.0);
+}`;
+
+  const module=device.createShaderModule({code:shader});
+  const pipeline=device.createRenderPipeline({
+    layout:"auto",
+    vertex:{module,entryPoint:"vs"},
+    fragment:{module,entryPoint:"fs",targets:[{format}]},
+    primitive:{topology:"triangle-list"}
+  });
+
+  function resize(){
+    const dpr=Math.min(devicePixelRatio||1,2);
+    canvas.width=Math.max(1,Math.floor(innerWidth*dpr));
+    canvas.height=Math.max(1,Math.floor(innerHeight*dpr));
+    ctx.configure({device,format,alphaMode:"opaque"});
+  }
+
+  addEventListener("resize",resize);
+  resize();
+
+  function render(){
+    const encoder=device.createCommandEncoder();
+    const pass=encoder.beginRenderPass({
+      colorAttachments:[{
+        view:ctx.getCurrentTexture().createView(),
+        clearValue:{r:0,g:0,b:0,a:1},
+        loadOp:"clear",
+        storeOp:"store"
+      }]
+    });
+    pass.setPipeline(pipeline);
+    pass.draw(3);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    requestAnimationFrame(render);
+  }
+
+  render();
+}
+
+main();
+
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  background:#000;
+  touch-action:none;
+}
+canvas{display:block}
+</style>
+</head>
+
+<body>
+
+<audio id="sound" src="final_60108db6919bc200b087a3a2_239343.mp3"></audio>
+
+<script>
+/* ===== GPU LOAD ===== */
+const LOAD = 200000;
+/* ==================== */
+
+const canvas=document.createElement("canvas");
+const ctx=canvas.getContext("2d");
+document.body.appendChild(canvas);
+
+let w,h;
+let objects=[];
+
+function resize(){
+  w=canvas.width=innerWidth;
+  h=canvas.height=innerHeight;
+}
+resize();
+addEventListener("resize",resize);
+
+function touch(){
+  const sound=document.getElementById("sound");
+
+  sound.currentTime=0;
+  sound.play();
+
+  for(let i=0;i<LOAD;i++){
+    objects.push({
+      x:Math.random()*w,
+      y:Math.random()*h,
+      vx:(Math.random()-.5)*15,
+      vy:(Math.random()-.5)*15,
+      s:Math.random()*35+5
+    });
+  }
+}
+
+addEventListener("touchstart",touch,{passive:true});
+addEventListener("mousedown",touch);
+
+function render(){
+  ctx.fillStyle="rgba(0,0,0,.12)";
+  ctx.fillRect(0,0,w,h);
+
+  for(const o of objects){
+    o.x+=o.vx;
+    o.y+=o.vy;
+
+    if(o.x<0||o.x>w)o.vx*=-1;
+    if(o.y<0||o.y>h)o.vy*=-1;
+
+    ctx.fillStyle="white";
+    ctx.fillRect(o.x,o.y,o.s,o.s);
+  }
+
+  requestAnimationFrame(render);
+}
+
+render();
+</script>
+
+</body>
+</html>
